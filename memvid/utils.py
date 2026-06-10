@@ -22,24 +22,24 @@ from .config import get_default_config, codec_parameters
 logger = logging.getLogger(__name__)
 
 
-def encode_to_qr(data: str) -> Tuple[Image.Image, Dict[str, Any]]:
+def encode_to_qr(data: str) -> Image.Image:
     """
-    Encode data to QR code image and extract BitMatrix
+    Encode data to QR code image
     
     Args:
         data: String data to encode
         
     Returns:
-        Tuple of (PIL Image of QR code, BitMatrix data dict)
+        PIL Image of QR code
     """
 
     config = get_default_config()["qr"]
-    original_data = data
 
+    # Compress data if it's large
     if len(data) > 100:
         compressed = gzip.compress(data.encode())
         data = base64.b64encode(compressed).decode()
-        data = "GZ:" + data
+        data = "GZ:" + data  # Prefix to indicate compression
     
     qr = qrcode.QRCode(
         version=config["version"],
@@ -52,13 +52,10 @@ def encode_to_qr(data: str) -> Tuple[Image.Image, Dict[str, Any]]:
     qr.make(fit=True)
     
     img = qr.make_image(fill_color=config["fill_color"], back_color=config["back_color"])
-    
-    bitmatrix_data = extract_qr_bitmatrix(qr)
-    if bitmatrix_data:
-        bitmatrix_data["data"] = data
-        bitmatrix_data["original_data"] = original_data
-    
-    return img, bitmatrix_data
+    # qrcode may return a PilImage wrapper; unwrap to a true PIL Image
+    if not isinstance(img, Image.Image) and hasattr(img, "get_image"):
+        img = img.get_image()
+    return img
 
 
 def decode_qr(image: np.ndarray) -> Optional[str]:
@@ -72,11 +69,22 @@ def decode_qr(image: np.ndarray) -> Optional[str]:
         Decoded string or None if decode fails
     """
     try:
-        # Initialize OpenCV QR code detector
-        detector = cv2.QRCodeDetector()
+        # Grayscale input improves detection reliability
+        if image.ndim == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        # Detect and decode
-        data, bbox, straight_qrcode = detector.detectAndDecode(image)
+        # The Aruco-based detector (OpenCV >= 4.8) is far more reliable for
+        # high-version QR codes than the legacy detector; fall back if absent.
+        detectors = []
+        if hasattr(cv2, "QRCodeDetectorAruco"):
+            detectors.append(cv2.QRCodeDetectorAruco())
+        detectors.append(cv2.QRCodeDetector())
+        
+        data = ""
+        for detector in detectors:
+            data, bbox, straight_qrcode = detector.detectAndDecode(image)
+            if data:
+                break
         
         if data:
             # Check if data was compressed
@@ -252,7 +260,7 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]
     start = 0
     
     while start < len(text):
-        end = start + chunk_size
+        end = min(start + chunk_size, len(text))
         chunk = text[start:end]
         
         # Try to break at sentence boundary
@@ -262,7 +270,12 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]
                 end = start + last_period + 1
                 chunk = text[start:end]
         
-        chunks.append(chunk.strip())
+        chunk = chunk.strip()
+        if chunk:
+            chunks.append(chunk)
+        
+        if end >= len(text):
+            break
         start = end - overlap
     
     return chunks
@@ -272,115 +285,6 @@ def save_index(index_data: Dict[str, Any], output_path: str):
     """Save index data to JSON file"""
     with open(output_path, 'w') as f:
         json.dump(index_data, f, indent=2)
-
-
-
-def extract_qr_bitmatrix(qr_code) -> Dict[str, Any]:
-    """
-    Extract BitMatrix data from QR code object
-    
-    Args:
-        qr_code: QRCode object after make() has been called
-        
-    Returns:
-        Dictionary containing BitMatrix data and metadata
-    """
-    try:
-        modules = qr_code.modules
-        if modules is None:
-            raise ValueError("QR code modules not available - ensure make() was called")
-        
-        bitmatrix = []
-        for row in modules:
-            bitmatrix.append([bool(cell) for cell in row])
-        
-        return {
-            "bitmatrix": bitmatrix,
-            "version": qr_code.version,
-            "error_correction": qr_code.error_correction,
-            "box_size": qr_code.box_size,
-            "border": qr_code.border
-        }
-    except Exception as e:
-        logger.warning(f"BitMatrix extraction failed: {e}")
-        return None
-
-
-def decode_qr_from_bitmatrix(bitmatrix_data: Dict[str, Any]) -> Optional[str]:
-    """
-    Decode QR data directly from BitMatrix JSON data
-    
-    Args:
-        bitmatrix_data: Dictionary containing BitMatrix and metadata
-        
-    Returns:
-        Decoded string or None if decode fails
-    """
-    try:
-        if "data" in bitmatrix_data:
-            data = bitmatrix_data["data"]
-            
-            if data.startswith("GZ:"):
-                compressed_data = base64.b64decode(data[3:])
-                data = gzip.decompress(compressed_data).decode()
-            
-            return data
-            
-    except Exception as e:
-        logger.warning(f"BitMatrix decode failed: {e}")
-    return None
-
-
-def extract_and_decode_from_json(json_path: str) -> Optional[str]:
-    """
-    Extract and decode data directly from JSON file
-    
-    Args:
-        json_path: Path to JSON file containing BitMatrix data
-        
-    Returns:
-        Decoded string or None if decode fails
-    """
-    try:
-        with open(json_path, 'r') as f:
-            bitmatrix_data = json.load(f)
-        
-        if "original_data" in bitmatrix_data:
-            return bitmatrix_data["original_data"]
-        elif "data" in bitmatrix_data:
-            data = bitmatrix_data["data"]
-            if data.startswith("GZ:"):
-                compressed_data = base64.b64decode(data[3:])
-                data = gzip.decompress(compressed_data).decode()
-            return data
-            
-    except Exception as e:
-        logger.warning(f"JSON decode failed: {e}")
-    return None
-
-
-def batch_extract_and_decode_json(frames_dir: str, frame_numbers: List[int]) -> Dict[int, str]:
-    """
-    Extract and decode multiple frames from JSON files efficiently
-    
-    Args:
-        frames_dir: Directory containing JSON files
-        frame_numbers: List of frame numbers to decode
-        
-    Returns:
-        Dict mapping frame_number to decoded data
-    """
-    from pathlib import Path
-    results = {}
-    
-    for frame_num in frame_numbers:
-        json_path = Path(frames_dir) / f"frame_{frame_num:06d}.json"
-        if json_path.exists():
-            decoded = extract_and_decode_from_json(str(json_path))
-            if decoded:
-                results[frame_num] = decoded
-    
-    return results
 
 
 def load_index(index_path: str) -> Dict[str, Any]:

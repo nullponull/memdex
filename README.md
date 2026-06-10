@@ -284,122 +284,59 @@ pytest --cov=memvid tests/
 black memvid/
 ```
 
-## 🆚 Comprehensive Performance Comparison / 詳細パフォーマンス比較
+## ⚡ Fast Retrieval Optimization / 高速検索最適化
 
-### Revolutionary BitMatrix⇔JSON Innovation / 革新的BitMatrix⇔JSON変換技術
+### English
 
-Memvid introduces a **game-changing approach** that revolutionizes traditional RAG (Retrieval-Augmented Generation) systems by eliminating the need for expensive vector databases while maintaining practical search performance.
+This fork changes how chunk text is retrieved at search time. The original
+implementation located frames via semantic search and then extracted and
+QR-decoded those frames from the video on every query, which required heavy
+OpenCV image processing and large memory spikes on big datasets.
 
-Memvidは従来のRAG（検索拡張生成）システムを革命的に変える**画期的なアプローチ**を導入し、高価なベクターデータベースを不要にしながら実用的な検索性能を維持します。
+Since the search index (`*_index.json`) already stores the full text of every
+chunk in its metadata, this fork returns chunk text **directly from the
+in-memory index** by default. Video frame extraction and QR decoding are
+skipped entirely, so retrieval latency is essentially the cost of the FAISS
+semantic search alone, with no extra file I/O.
 
-### 📊 Concrete Performance Metrics / 具体的性能指標
+The video remains the durable, portable archive of your data. If you want to
+read chunks back from the video itself (e.g. to verify its integrity), pass
+`verify_from_video=True`:
 
-**Based on real-world testing with VectorDBBench industry standards:**
-**VectorDBBench業界標準による実世界テスト結果:**
+```python
+retriever = MemvidRetriever("memory.mp4", "memory_index.json")
 
-| Metric / 指標 | **Memvid (BitMatrix⇔JSON)** | **Traditional VectorDB / 従来VectorDB** |
-|---------------|------------------------------|------------------------------------------|
-| **Search Latency / 検索遅延** | 98-112ms | 2.2-13.7ms |
-| **Throughput / スループット** | ~9-10 QPS | 950-9,704 QPS |
-| **Memory Usage / メモリ使用量** | **5.3MB** | **数GB〜数十GB** |
-| **Setup Time / セットアップ時間** | **<1 minute / <1分** | **Hours-Days / 数時間〜数日** |
-| **Monthly Cost / 月額コスト** | **$0** | **$1,000+** |
-| **Infrastructure / インフラ** | **Local files / ローカルファイル** | **Cloud servers / クラウドサーバー** |
-
-### 🎯 Key Innovation Benefits / 主要革新メリット
-
-#### 💰 **Cost Revolution / コスト革命**
-- **Memvid**: Completely FREE - No cloud costs, no server maintenance
-- **VectorDB**: $1,000+ monthly for enterprise performance (ZillizCloud, Pinecone, etc.)
-- **Savings**: **100% cost reduction** for most use cases
-
-- **Memvid**: 完全無料 - クラウドコスト不要、サーバーメンテナンス不要
-- **VectorDB**: エンタープライズ性能で月額$1,000+（ZillizCloud、Pinecone等）
-- **節約**: ほとんどの用途で**100%コスト削減**
-
-#### 🧠 **Memory Efficiency Revolution / メモリ効率革命**
-- **Memvid**: Consistent 5.3MB regardless of dataset size
-- **VectorDB**: Scales from GB to TB with dataset growth
-- **Advantage**: **1000x+ memory efficiency** for large datasets
-
-- **Memvid**: データセットサイズに関係なく一定5.3MB
-- **VectorDB**: データセット増加に伴いGBからTBまでスケール
-- **優位性**: 大規模データセットで**1000倍以上のメモリ効率**
-
-#### ⚡ **Performance Trade-offs / 性能トレードオフ**
-**Speed Comparison:**
-- **VectorDB Leaders**: ZillizCloud (2.5ms), Milvus (2.2ms) - **40-50x faster**
-- **Popular Options**: Pinecone (13.7ms), OpenSearch (13.2ms) - **7-8x faster**
-- **Memvid**: 98-112ms - **Still practical for most applications**
-
-**速度比較:**
-- **VectorDBトップ**: ZillizCloud (2.5ms)、Milvus (2.2ms) - **40-50倍高速**
-- **人気オプション**: Pinecone (13.7ms)、OpenSearch (13.2ms) - **7-8倍高速**
-- **Memvid**: 98-112ms - **多くのアプリケーションで実用的**
-
-### 🏗️ **Architectural Innovation / アーキテクチャ革新**
-
-#### Traditional RAG Architecture / 従来RAGアーキテクチャ
-```
-Text → Embeddings → Vector Database → Similarity Search
-高コスト・高メモリ・複雑セットアップ
+results = retriever.search("query")                          # fast path (index)
+verified = retriever.search("query", verify_from_video=True) # decode from video
 ```
 
-#### Memvid's Revolutionary Approach / Memvidの革新的アプローチ
+No extra files are generated and existing videos/indexes work unchanged.
+
+### 日本語
+
+このフォークでは検索時のチャンクテキスト取得方法を変更しています。元の実装は、
+セマンティック検索でフレーム番号を特定した後、毎回動画からフレームを抽出して
+OpenCVでQRコードをデコードしており、大規模データセットでは重い画像処理と
+メモリ消費が発生していました。
+
+検索インデックス（`*_index.json`）のメタデータには各チャンクの全文が既に
+保存されているため、本フォークではデフォルトで**メモリ上のインデックスから
+直接テキストを返します**。動画フレームの抽出・QRデコードを完全にスキップ
+するため、検索遅延は実質的にFAISSによるセマンティック検索のみとなり、
+追加のファイルI/Oも発生しません。
+
+動画はデータの永続的・可搬的なアーカイブとしてそのまま機能します。動画から
+チャンクを読み戻したい場合（整合性検証など）は `verify_from_video=True` を
+指定してください。
+
+```python
+retriever = MemvidRetriever("memory.mp4", "memory_index.json")
+
+results = retriever.search("クエリ")                           # 高速パス（インデックス）
+verified = retriever.search("クエリ", verify_from_video=True)  # 動画からデコード
 ```
-Text → QR Codes → BitMatrix → JSON → Direct Search
-ローカル完結・低メモリ・シンプルセットアップ
-```
 
-### 📈 **Scaling Characteristics / スケーリング特性**
-
-#### Small Scale (< 1,000 chunks) / 小規模（1,000チャンク未満）
-- **Memvid**: Excellent cost efficiency, practical performance
-- **VectorDB**: Overkill, expensive for simple needs
-- **Winner**: **Memvid** for cost-conscious applications
-
-#### Medium Scale (1,000-10,000 chunks) / 中規模（1,000-10,000チャンク）
-- **Memvid**: JSON optimization kicks in, performance improves
-- **VectorDB**: Consistent high performance, costs accumulate
-- **Winner**: **Depends on budget vs speed requirements**
-
-#### Large Scale (10,000+ chunks) / 大規模（10,000+チャンク）
-- **Memvid**: Memory efficiency advantage grows exponentially
-- **VectorDB**: High performance maintained, costs skyrocket
-- **Winner**: **Memvid** for memory-constrained or cost-sensitive scenarios
-
-### 🎯 **Use Case Recommendations / 用途別推奨**
-
-#### **Choose Memvid When / Memvidを選ぶべき場合:**
-✅ Budget is a primary concern / 予算が主要な懸念事項
-✅ Local/offline processing required / ローカル/オフライン処理が必要
-✅ Memory constraints exist / メモリ制約がある
-✅ Simple setup preferred / シンプルなセットアップを好む
-✅ Sub-second response not critical / サブ秒応答が重要でない
-
-#### **Choose VectorDB When / VectorDBを選ぶべき場合:**
-✅ Ultra-fast search is critical (< 50ms) / 超高速検索が重要（50ms未満）
-✅ High concurrent users / 高い同時ユーザー数
-✅ Enterprise budget available / エンタープライズ予算が利用可能
-✅ Cloud infrastructure preferred / クラウドインフラを好む
-
-### 🏆 **Innovation Summary / 革新サマリー**
-
-**Memvid's BitMatrix⇔JSON conversion represents a paradigm shift:**
-**MemvidのBitMatrix⇔JSON変換はパラダイムシフトを表します:**
-
-🌟 **Democratizes RAG**: Makes advanced search accessible to everyone
-🌟 **RAGの民主化**: 高度な検索を誰でもアクセス可能に
-
-💡 **Rethinks Architecture**: Eliminates expensive vector database dependency
-💡 **アーキテクチャ再考**: 高価なベクターデータベース依存を排除
-
-🚀 **Enables Innovation**: Allows experimentation without infrastructure costs
-🚀 **イノベーション促進**: インフラコストなしで実験を可能に
-
-**Result: A practical, cost-effective alternative that makes RAG technology accessible to individuals, startups, and cost-conscious organizations worldwide.**
-
-**結果: RAG技術を世界中の個人、スタートアップ、コスト意識の高い組織にアクセス可能にする実用的でコスト効率的な代替手段。**
+追加ファイルは生成されず、既存の動画・インデックスはそのまま動作します。
 
 ## 🆚 Traditional Comparison Table / 従来比較表
 
@@ -459,167 +396,3 @@ Special thanks to all contributors who help make Memvid better!
 **Ready to revolutionize your AI memory management? Install Memvid and start building!** 🚀
 
 ---
-
-# BitMatrix⇔JSON変換機能 (日本語)
-
-## 概要
-MemVidにBitMatrix⇔JSON変換機能が追加されました。この機能により、QRコードの画像ファイル（PNG）を読み込む代わりに、軽量なJSONファイルから直接データを取得できるようになり、大幅なパフォーマンス向上を実現します。
-
-## 主な改善点
-- **メモリ使用量の削減**: 8GB超から約200MBに激減
-- **検索遅延の最小化**: 従来比約10%増（900ms vs 820ms）のみ
-- **I/O効率の向上**: 画像読み込み・デコード処理を省略
-
-## 使用方法
-
-### 基本的な使い方
-```python
-from memvid import MemvidEncoder, MemvidRetriever
-
-# エンコード（自動的にPNGとJSONの両方が生成されます）
-encoder = MemvidEncoder()
-encoder.add_chunks(["テキストチャンク1", "テキストチャンク2"])
-encoder.build_video("memory.mp4", "memory_index.json")
-
-# 検索（JSONファイルが利用可能な場合は自動的に使用されます）
-retriever = MemvidRetriever("memory.mp4", "memory_index.json")
-results = retriever.search("検索クエリ", top_k=5)
-```
-
-### パフォーマンス最適化
-システムは以下の順序でデータを取得します：
-1. **キャッシュ**: メモリ内キャッシュから取得
-2. **JSON**: 軽量なJSONファイルから直接読み込み
-3. **画像**: フォールバックとして動画からQRコードを抽出・デコード
-
-### 後方互換性
-- 既存の動画ファイルは引き続き動作します
-- JSONファイルが存在しない場合は自動的に従来の画像デコードにフォールバックします
-- 新しく生成される動画では、PNGとJSONの両方のファイルが作成されます
-
-## 技術詳細
-
-### 処理手順の変更点
-
-#### 従来の処理手順（PNG画像のみ）
-```
-【エンコード】
-1. テキストチャンクを準備
-2. チャンクをJSON文字列に変換
-3. QRコードを生成
-4. PNG画像として保存
-5. 動画ファイルを作成
-
-【検索・取得】
-1. セマンティック検索でフレーム番号を特定
-2. 動画からフレーム画像を抽出
-3. OpenCVでQRコードを検出・デコード
-4. JSON文字列をパース
-5. テキストデータを取得
-```
-
-#### 新しい処理手順（BitMatrix⇔JSON最適化）
-```
-【エンコード】
-1. テキストチャンクを準備
-2. チャンクをJSON文字列に変換
-3. QRコードを生成
-4. BitMatrixデータを抽出
-5. PNG画像として保存（後方互換性用）
-6. BitMatrixデータをJSONファイルとして保存 ← 新機能
-7. 動画ファイルを作成
-
-【検索・取得】
-1. セマンティック検索でフレーム番号を特定
-2. JSONファイルの存在を確認 ← 新機能
-3a. JSONファイルが存在する場合：
-   - JSONファイルを直接読み込み ← 高速化
-   - テキストデータを即座に取得
-3b. JSONファイルが存在しない場合（フォールバック）：
-   - 従来の動画フレーム抽出処理
-   - OpenCVでQRコードを検出・デコード
-   - JSON文字列をパース
-   - テキストデータを取得
-```
-
-### データフロー
-1. **エンコード時**: テキストチャンク → JSON文字列 → QRコード → PNG画像 + BitMatrix JSON
-2. **検索時**: クエリ → セマンティック検索 → フレーム番号 → JSON読み込み → テキスト取得
-
-### ファイル構造
-```
-frames/
-├── frame_000000.png  # 従来の画像ファイル（後方互換性用）
-├── frame_000000.json # 新しいBitMatrixデータ
-├── frame_000001.png
-├── frame_000001.json
-└── ...
-```
-
-### パフォーマンス比較
-
-#### 従来の処理（PNG画像）
-- **メモリ使用量**: 8GB以上（大量の画像データ）
-- **I/O処理**: 重い（画像ファイル読み込み + OpenCV処理）
-- **検索速度**: 約820ms
-- **CPU使用率**: 高い（画像デコード処理）
-
-#### 新しい処理（BitMatrix⇔JSON）
-- **メモリ使用量**: 約200MB（軽量なJSONデータ）
-- **I/O処理**: 軽い（JSONファイル直接読み込み）
-- **検索速度**: 約900ms（わずか10%増）
-- **CPU使用率**: 低い（画像処理を省略）
-
-### 最適化の仕組み
-
-#### 1. データ取得の優先順位
-```python
-def _decode_frames_parallel(self, frame_numbers):
-    # 1. メモリキャッシュをチェック（最高速）
-    cached_results = self._check_cache(frame_numbers)
-    
-    # 2. JSONファイルから読み込み（高速）
-    json_results = batch_extract_and_decode_json(frames_dir, uncached_frames)
-    
-    # 3. 動画からフレーム抽出（フォールバック）
-    video_results = batch_extract_and_decode(video_file, remaining_frames)
-```
-
-#### 2. 圧縮とデータ形式
-- **短いテキスト（≤100文字）**: そのまま保存
-- **長いテキスト（>100文字）**: gzip圧縮 + Base64エンコード
-- **プレフィックス**: "GZ:" で圧縮データを識別
-
-### 圧縮処理
-- 100文字を超える長いテキストは自動的にgzip圧縮 + Base64エンコードされます
-- 圧縮されたデータには"GZ:"プレフィックスが付与されます
-- JSONファイルには元のデータと圧縮データの両方が保存されます
-
-### 使用例：大量文書の処理
-```python
-from memvid import MemvidEncoder, MemvidRetriever
-import os
-
-# 大量の文書を処理
-encoder = MemvidEncoder(chunk_size=512, overlap=50)
-
-# PDFファイルを追加
-for pdf_file in os.listdir("documents"):
-    if pdf_file.endswith(".pdf"):
-        encoder.add_pdf(f"documents/{pdf_file}")
-
-# 最適化された動画を構築
-encoder.build_video(
-    "knowledge_base.mp4",
-    "knowledge_index.json",
-    codec="h265"  # 高圧縮率
-)
-
-# 高速検索
-retriever = MemvidRetriever("knowledge_base.mp4", "knowledge_index.json")
-results = retriever.search("機械学習アルゴリズム", top_k=10)
-
-# 結果の表示
-for i, result in enumerate(results):
-    print(f"{i+1}. {result[:100]}...")
-```</str>

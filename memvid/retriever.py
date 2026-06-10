@@ -13,7 +13,7 @@ import cv2
 
 from .utils import (
     extract_frame, decode_qr, batch_extract_and_decode,
-    extract_and_decode_cached, batch_extract_and_decode_json
+    extract_and_decode_cached
 )
 
 from .index import IndexManager
@@ -64,29 +64,41 @@ class MemvidRetriever:
         
         logger.info(f"Video has {self.total_frames} frames at {self.fps} fps")
     
-    def search(self, query: str, top_k: int = 5) -> List[str]:
+    def search(self, query: str, top_k: int = 5,
+               verify_from_video: bool = False) -> List[str]:
         """
-        Search for relevant chunks using semantic search
-        
+        Search for relevant chunks using semantic search.
+
+        By default, chunk text is returned directly from the in-memory index
+        metadata, so no video frame extraction or QR decoding is performed.
+        This makes retrieval latency essentially equal to the semantic search
+        itself, with no additional I/O or image processing.
+
         Args:
             query: Search query
             top_k: Number of results to return
-            
+            verify_from_video: If True, decode the chunks from the video's QR
+                frames instead (slower; useful to verify video integrity).
+
         Returns:
             List of relevant text chunks
         """
         start_time = time.time()
-        
+
         # Semantic search in index
         search_results = self.index_manager.search(query, top_k)
-        
-        # Extract unique frame numbers
+
+        if not verify_from_video:
+            # Fast path: the index metadata already stores the full chunk text
+            results = [metadata["text"] for _, _, metadata in search_results]
+            elapsed = time.time() - start_time
+            logger.info(f"Search completed in {elapsed:.3f}s for query: '{query[:50]}...'")
+            return results
+
+        # Verification path: decode chunks from the video's QR frames
         frame_numbers = list(set(result[2]["frame"] for result in search_results))
-        
-        # Decode frames in parallel
         decoded_frames = self._decode_frames_parallel(frame_numbers)
-        
-        # Extract text from decoded data
+
         results = []
         for chunk_id, distance, metadata in search_results:
             frame_num = metadata["frame"]
@@ -100,24 +112,29 @@ class MemvidRetriever:
             else:
                 # Fallback to metadata text if decode failed
                 results.append(metadata["text"])
-        
+
         elapsed = time.time() - start_time
         logger.info(f"Search completed in {elapsed:.3f}s for query: '{query[:50]}...'")
-        
+
         return results
     
-    def get_chunk_by_id(self, chunk_id: int) -> Optional[str]:
+    def get_chunk_by_id(self, chunk_id: int,
+                        verify_from_video: bool = False) -> Optional[str]:
         """
-        Get specific chunk by ID
-        
+        Get specific chunk by ID.
+
         Args:
             chunk_id: Chunk ID
-            
+            verify_from_video: If True, decode the chunk from the video's QR
+                frame instead of reading it from the index metadata.
+
         Returns:
             Chunk text or None
         """
         metadata = self.index_manager.get_chunk_by_id(chunk_id)
         if metadata:
+            if not verify_from_video:
+                return metadata["text"]
             frame_num = metadata["frame"]
             decoded = self._decode_single_frame(frame_num)
             if decoded:
@@ -146,7 +163,7 @@ class MemvidRetriever:
     
     def _decode_frames_parallel(self, frame_numbers: List[int]) -> Dict[int, str]:
         """
-        Decode multiple frames in parallel, preferring JSON over image decoding
+        Decode multiple frames from the video in parallel (with caching)
         
         Args:
             frame_numbers: List of frame numbers to decode
@@ -154,6 +171,7 @@ class MemvidRetriever:
         Returns:
             Dict mapping frame number to decoded data
         """
+        # Check cache first
         results = {}
         uncached_frames = []
         
@@ -166,39 +184,33 @@ class MemvidRetriever:
         if not uncached_frames:
             return results
         
-        video_dir = Path(self.video_file).parent
-        json_results = batch_extract_and_decode_json(str(video_dir), uncached_frames)
+        # Decode uncached frames in parallel
+        max_workers = self.config["retrieval"]["max_workers"]
+        decoded = batch_extract_and_decode(
+            self.video_file, 
+            uncached_frames, 
+            max_workers=max_workers
+        )
         
-        for frame_num, data in json_results.items():
+        # Update results and cache
+        for frame_num, data in decoded.items():
             results[frame_num] = data
             if len(self._frame_cache) < self._cache_size:
                 self._frame_cache[frame_num] = data
         
-        remaining_frames = [f for f in uncached_frames if f not in json_results]
-        
-        if remaining_frames:
-            max_workers = self.config["retrieval"]["max_workers"]
-            decoded = batch_extract_and_decode(
-                self.video_file, 
-                remaining_frames, 
-                max_workers=max_workers
-            )
-            
-            for frame_num, data in decoded.items():
-                results[frame_num] = data
-                if len(self._frame_cache) < self._cache_size:
-                    self._frame_cache[frame_num] = data
-        
         return results
     
-    def search_with_metadata(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search_with_metadata(self, query: str, top_k: int = 5,
+                             verify_from_video: bool = False) -> List[Dict[str, Any]]:
         """
-        Search with full metadata
-        
+        Search with full metadata.
+
         Args:
             query: Search query
             top_k: Number of results
-            
+            verify_from_video: If True, decode chunk text from the video's QR
+                frames instead of reading it from the index metadata.
+
         Returns:
             List of result dictionaries with text, score, and metadata
         """
@@ -207,11 +219,10 @@ class MemvidRetriever:
         # Semantic search
         search_results = self.index_manager.search(query, top_k)
         
-        # Extract frame numbers
-        frame_numbers = list(set(result[2]["frame"] for result in search_results))
-        
-        # Decode frames
-        decoded_frames = self._decode_frames_parallel(frame_numbers)
+        decoded_frames = {}
+        if verify_from_video:
+            frame_numbers = list(set(result[2]["frame"] for result in search_results))
+            decoded_frames = self._decode_frames_parallel(frame_numbers)
         
         # Build results with metadata
         results = []
