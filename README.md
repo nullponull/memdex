@@ -1,398 +1,143 @@
-# Memvid - Video-Based AI Memory 🧠📹
+# Memdex — Lightweight, Serverless AI Memory 🧠
 
-**The lightweight, game-changing solution for AI memory at scale**
+**A local semantic-search memory for AI. No vector database, no server, no cloud costs — just a portable index file.**
 
-[![PyPI version](https://badge.fury.io/py/memvid.svg)](https://pypi.org/project/memvid/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-Memvid revolutionizes AI memory management by encoding text data into videos, enabling **lightning-fast semantic search** across millions of text chunks with **sub-second retrieval times**. Unlike traditional vector databases that consume massive amounts of RAM and storage, Memvid compresses your knowledge base into compact video files while maintaining instant access to any piece of information.
+Memdex turns a pile of documents into a single, portable semantic-search index. It embeds your text with `sentence-transformers`, stores the vectors in a FAISS index and the chunk text alongside them, and answers natural-language queries in milliseconds — entirely on your machine. Copy the index files anywhere and they just work, online or offline.
 
-## 🎥 Demo
+> **History:** Memdex began as a fork of [memvid](https://github.com/olow304/memvid), which stored chunks as QR codes inside an MP4 video and decoded frames at query time. In practice the video layer added latency, fragility, and storage overhead without providing the speed or portability benefits — those came entirely from the search index. Memdex keeps the good part (a single portable index) and drops the video machinery. See [Why the video was removed](#why-the-video-was-removed).
 
-https://github.com/user-attachments/assets/ec550e93-e9c4-459f-a8a1-46e122b5851e
+## ✨ Features
 
-
-
-## ✨ Key Features
-
-- 🎥 **Video-as-Database**: Store millions of text chunks in a single MP4 file
-- 🔍 **Semantic Search**: Find relevant content using natural language queries
-- 💬 **Built-in Chat**: Conversational interface with context-aware responses
-- 📚 **PDF Support**: Direct import and indexing of PDF documents
-- 🚀 **Fast Retrieval**: Sub-second search across massive datasets
-- 💾 **Efficient Storage**: 10x compression compared to traditional databases
-- 🔌 **Pluggable LLMs**: Works with OpenAI, Anthropic, or local models
-- 🌐 **Offline-First**: No internet required after video generation
-- 🔧 **Simple API**: Get started with just 3 lines of code
-
-## 🎯 Use Cases
-
-- **📖 Digital Libraries**: Index thousands of books in a single video file
-- **🎓 Educational Content**: Create searchable video memories of course materials
-- **📰 News Archives**: Compress years of articles into manageable video databases
-- **💼 Corporate Knowledge**: Build company-wide searchable knowledge bases
-- **🔬 Research Papers**: Quick semantic search across scientific literature
-- **📝 Personal Notes**: Transform your notes into a searchable AI assistant
-
-## 🚀 Why Memvid?
-
-### Game-Changing Innovation
-- **Video as Database**: Store millions of text chunks in a single MP4 file
-- **Instant Retrieval**: Sub-second semantic search across massive datasets
-- **10x Storage Efficiency**: Video compression reduces memory footprint dramatically
-- **Zero Infrastructure**: No database servers, just files you can copy anywhere
-- **Offline-First**: Works completely offline once videos are generated
-
-### Lightweight Architecture
-- **Minimal Dependencies**: Core functionality in ~1000 lines of Python
-- **CPU-Friendly**: Runs efficiently without GPU requirements
-- **Portable**: Single video file contains your entire knowledge base
-- **Streamable**: Videos can be streamed from cloud storage
+- **Serverless** — no database to run, no Pinecone/Zilliz bill. Just `pip install` and go.
+- **Portable** — your knowledge base is two files (`*_index.json` + `*_index.faiss`) you can copy, version, or back up.
+- **Fast** — retrieval is the cost of the FAISS search alone; chunk text is read straight from memory.
+- **Offline-first** — once the embedding model is cached, everything runs locally.
+- **Simple API** — build an index and query it in a few lines.
+- **Pluggable LLMs** — optional chat layer works with OpenAI, Google, or Anthropic.
+- **Document support** — plain text, PDF, and EPUB ingestion.
 
 ## 📦 Installation
 
-### Quick Install
 ```bash
-pip install memvid
+pip install memdex                 # core
+pip install "memdex[pdf]"          # + PDF ingestion
+pip install "memdex[epub]"         # + EPUB ingestion
+pip install "memdex[llm]"          # + OpenAI / Google / Anthropic chat
 ```
 
-### For PDF Support
-```bash
-pip install memvid PyPDF2
-```
+## 🚀 Quick Start
 
-### Recommended Setup (Virtual Environment)
-```bash
-# Create a new project directory
-mkdir my-memvid-project
-cd my-memvid-project
-
-# Create virtual environment
-python -m venv venv
-
-# Activate it
-# On macOS/Linux:
-source venv/bin/activate
-# On Windows:
-venv\Scripts\activate
-
-# Install memvid
-pip install memvid
-
-# For PDF support:
-pip install PyPDF2
-```
-
-## 🎯 Quick Start
-
-### Basic Usage
 ```python
-from memvid import MemvidEncoder, MemvidChat
+from memdex import MemdexEncoder, MemdexRetriever
 
-# Create video memory from text chunks
-chunks = ["Important fact 1", "Important fact 2", "Historical event details"]
-encoder = MemvidEncoder()
-encoder.add_chunks(chunks)
-encoder.build_video("memory.mp4", "memory_index.json")
+# 1. Build an index
+encoder = MemdexEncoder()
+encoder.add_chunks([
+    "The Eiffel Tower is located in Paris, France.",
+    "Python is a popular language for machine learning.",
+    "Sushi is a traditional Japanese dish made with vinegared rice.",
+])
+encoder.build_index("memory_index.json")   # writes memory_index.json + memory_index.faiss
 
-# Chat with your memory
-chat = MemvidChat("memory.mp4", "memory_index.json")
-chat.start_session()
-response = chat.chat("What do you know about historical events?")
-print(response)
+# 2. Search it
+retriever = MemdexRetriever("memory_index.json")
+for chunk in retriever.search("Japanese food", top_k=3):
+    print(chunk)
 ```
 
-### Building Memory from Documents
+### Build from documents
+
 ```python
-from memvid import MemvidEncoder
+from memdex import MemdexEncoder
 import os
 
-# Load documents
-encoder = MemvidEncoder(chunk_size=512, overlap=50)
+encoder = MemdexEncoder()
+for name in os.listdir("documents"):
+    path = os.path.join("documents", name)
+    if name.endswith(".pdf"):
+        encoder.add_pdf(path)
+    elif name.endswith(".epub"):
+        encoder.add_epub(path)
+    else:
+        with open(path, encoding="utf-8") as f:
+            encoder.add_text(f.read())
 
-# Add text files
-for file in os.listdir("documents"):
-    with open(f"documents/{file}", "r") as f:
-        encoder.add_text(f.read(), metadata={"source": file})
-
-# Build optimized video
-encoder.build_video(
-    "knowledge_base.mp4",
-    "knowledge_index.json",
-    fps=30,  # Higher FPS = more chunks per second
-    frame_size=512  # Larger frames = more data per frame
-)
+encoder.build_index("knowledge_index.json")
 ```
 
-### Advanced Search & Retrieval
+### Search with scores and metadata
+
 ```python
-from memvid import MemvidRetriever
-
-# Initialize retriever
-retriever = MemvidRetriever("knowledge_base.mp4", "knowledge_index.json")
-
-# Semantic search
-results = retriever.search("machine learning algorithms", top_k=5)
-for chunk, score in results:
-    print(f"Score: {score:.3f} | {chunk[:100]}...")
-
-# Get context window
-context = retriever.get_context("explain neural networks", max_tokens=2000)
-print(context)
+retriever = MemdexRetriever("knowledge_index.json")
+for hit in retriever.search_with_metadata("neural networks", top_k=5):
+    print(f"{hit['score']:.3f}  {hit['text'][:80]}")
 ```
 
-### Interactive Chat Interface
+### Chat with your memory (optional LLM layer)
+
 ```python
-from memvid import MemvidInteractive
+from memdex import MemdexChat
 
-# Launch interactive chat UI
-interactive = MemvidInteractive("knowledge_base.mp4", "knowledge_index.json")
-interactive.run()  # Opens web interface at http://localhost:7860
+chat = MemdexChat("knowledge_index.json", llm_provider="google")  # or "openai"/"anthropic"
+print(chat.chat("What does the knowledge base say about transformers?"))
 ```
 
-### Testing with file_chat.py
-The `examples/file_chat.py` script provides a comprehensive way to test Memvid with your own documents:
+Set the relevant API key first, e.g. `export GOOGLE_API_KEY=...`. Without a key, the chat layer returns the retrieved context only.
+
+### Chat with your own files from the CLI
 
 ```bash
-# Process a directory of documents
-python examples/file_chat.py --input-dir /path/to/documents --provider google
-
-# Process specific files
-python examples/file_chat.py --files doc1.txt doc2.pdf --provider openai
-
-# Use H.265 compression (requires Docker)
-python examples/file_chat.py --input-dir docs/ --codec h265 --provider google
-
-# Custom chunking for large documents
-python examples/file_chat.py --files large.pdf --chunk-size 2048 --overlap 32 --provider google
-
-# Load existing memory
-python examples/file_chat.py --load-existing output/my_memory --provider google
+python examples/file_chat.py --input-dir ./documents --provider google
+python examples/file_chat.py --files report.pdf notes.txt --chunk-size 2048
+python examples/file_chat.py --load-existing output/memory_20250101_index.json
 ```
 
-### Complete Example: Chat with a PDF Book
-```bash
-# 1. Create a new directory and set up environment
-mkdir book-chat-demo
-cd book-chat-demo
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+## 🧩 How it works
 
-# 2. Install dependencies
-pip install memvid PyPDF2
+```
+Text / PDF / EPUB
+   → chunk_text()                      # overlapping chunks
+   → sentence-transformers embeddings  # vectors
+   → FAISS index (+ chunk text in metadata)
+   → *_index.json  +  *_index.faiss    # one portable index
 
-# 3. Create book_chat.py
-cat > book_chat.py << 'EOF'
-from memvid import MemvidEncoder, chat_with_memory
-import os
-
-# Your PDF file
-book_pdf = "book.pdf"  # Replace with your PDF path
-
-# Build video memory
-encoder = MemvidEncoder()
-encoder.add_pdf(book_pdf)
-encoder.build_video("book_memory.mp4", "book_index.json")
-
-# Chat with the book
-api_key = os.getenv("OPENAI_API_KEY")  # Optional: for AI responses
-chat_with_memory("book_memory.mp4", "book_index.json", api_key=api_key)
-EOF
-
-# 4. Run it
-export OPENAI_API_KEY="your-api-key"  # Optional
-python book_chat.py
+Query → embed → FAISS search → return chunk text from the index
 ```
 
-## 🛠️ Advanced Configuration
+At query time there is no frame extraction, no image decoding, and no network call — the matching chunk text is already in the index metadata held in memory.
 
-### Custom Embeddings
-```python
-from sentence_transformers import SentenceTransformer
+## Why the video was removed
 
-# Use custom embedding model
-custom_model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
-encoder = MemvidEncoder(embedding_model=custom_model)
-```
+The original project's headline benefits (zero infrastructure, file-based portability, offline use, no monthly cost) all came from the search index. The full chunk text was already stored in the index metadata, so the QR-in-video layer was never actually on the critical path for retrieval. Removing it:
 
-### Video Optimization
-```python
-# For maximum compression
-encoder.build_video(
-    "compressed.mp4",
-    "index.json",
-    fps=60,  # More frames per second
-    frame_size=256,  # Smaller frames
-    video_codec='h265',  # Better compression
-    crf=28  # Compression quality (lower = better quality)
-)
-```
+- **drops latency** — measured chunk retrieval went from ~840 ms (decode a video frame and read its QR) to well under 1 ms (read from the in-memory index);
+- **removes fragility** — no dependence on video codecs, frame resolution, or OpenCV's QR detector (which silently failed to decode high-version QR codes on recent OpenCV builds);
+- **shrinks dependencies** — no `opencv`, `qrcode`, `ffmpeg`, or Docker;
+- **shrinks storage** — encoding text → QR image → compressed video is far larger than the text itself.
 
-### Distributed Processing
-```python
-# Process large datasets in parallel
-encoder = MemvidEncoder(n_workers=8)
-encoder.add_chunks_parallel(massive_chunk_list)
-```
+## ⚖️ When to use Memdex (and when not to)
 
-## 🐛 Troubleshooting
+**Good fit:** personal notes, research papers, documentation, and small-to-medium knowledge bases (thousands to low hundreds of thousands of chunks) where you want a zero-ops, copy-anywhere semantic search.
 
-### Common Issues
+**Not a good fit:** very large corpora (millions of chunks / multi-GB text). Memdex loads chunk text into memory, so at that scale a purpose-built store (LanceDB, SQLite + a vector extension, or a hosted vector DB) is the right tool.
 
-**ModuleNotFoundError: No module named 'memvid'**
-```bash
-# Make sure you're using the right Python
-which python  # Should show your virtual environment path
-# If not, activate your virtual environment:
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+Conceptually Memdex is close to a minimal local vector store like Chroma; its distinguishing goal is to stay tiny, dependency-light, and contained in a single portable index.
 
-**ImportError: PyPDF2 is required for PDF support**
-```bash
-pip install PyPDF2
-```
-
-**LLM API Key Issues**
-```bash
-# Set your API key (get one at https://platform.openai.com)
-export GOOGLE_API_KEY="AIzaSyB1-..."  # macOS/Linux
-# Or on Windows:
-set GOOGLE_API_KEY=AIzaSyB1-...
-```
-
-**Large PDF Processing**
-```python
-# For very large PDFs, use smaller chunk sizes
-encoder = MemvidEncoder()
-encoder.add_pdf("large_book.pdf", chunk_size=400, overlap=50)
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+## 🧪 Development
 
 ```bash
-# Run tests
+pip install -e ".[dev,pdf,llm]"
 pytest tests/
-
-# Run with coverage
-pytest --cov=memvid tests/
-
-# Format code
-black memvid/
+black memdex/
 ```
-
-## ⚡ Fast Retrieval Optimization / 高速検索最適化
-
-### English
-
-This fork changes how chunk text is retrieved at search time. The original
-implementation located frames via semantic search and then extracted and
-QR-decoded those frames from the video on every query, which required heavy
-OpenCV image processing and large memory spikes on big datasets.
-
-Since the search index (`*_index.json`) already stores the full text of every
-chunk in its metadata, this fork returns chunk text **directly from the
-in-memory index** by default. Video frame extraction and QR decoding are
-skipped entirely, so retrieval latency is essentially the cost of the FAISS
-semantic search alone, with no extra file I/O.
-
-The video remains the durable, portable archive of your data. If you want to
-read chunks back from the video itself (e.g. to verify its integrity), pass
-`verify_from_video=True`:
-
-```python
-retriever = MemvidRetriever("memory.mp4", "memory_index.json")
-
-results = retriever.search("query")                          # fast path (index)
-verified = retriever.search("query", verify_from_video=True) # decode from video
-```
-
-No extra files are generated and existing videos/indexes work unchanged.
-
-### 日本語
-
-このフォークでは検索時のチャンクテキスト取得方法を変更しています。元の実装は、
-セマンティック検索でフレーム番号を特定した後、毎回動画からフレームを抽出して
-OpenCVでQRコードをデコードしており、大規模データセットでは重い画像処理と
-メモリ消費が発生していました。
-
-検索インデックス（`*_index.json`）のメタデータには各チャンクの全文が既に
-保存されているため、本フォークではデフォルトで**メモリ上のインデックスから
-直接テキストを返します**。動画フレームの抽出・QRデコードを完全にスキップ
-するため、検索遅延は実質的にFAISSによるセマンティック検索のみとなり、
-追加のファイルI/Oも発生しません。
-
-動画はデータの永続的・可搬的なアーカイブとしてそのまま機能します。動画から
-チャンクを読み戻したい場合（整合性検証など）は `verify_from_video=True` を
-指定してください。
-
-```python
-retriever = MemvidRetriever("memory.mp4", "memory_index.json")
-
-results = retriever.search("クエリ")                           # 高速パス（インデックス）
-verified = retriever.search("クエリ", verify_from_video=True)  # 動画からデコード
-```
-
-追加ファイルは生成されず、既存の動画・インデックスはそのまま動作します。
-
-## 🆚 Traditional Comparison Table / 従来比較表
-
-| Feature | Memvid | Vector DBs | Traditional DBs |
-|---------|--------|------------|-----------------|
-| Storage Efficiency | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ |
-| Setup Complexity | Simple | Complex | Complex |
-| Semantic Search | ✅ | ✅ | ❌ |
-| Offline Usage | ✅ | ❌ | ✅ |
-| Portability | File-based | Server-based | Server-based |
-| Scalability | Millions | Millions | Billions |
-| Cost | Free | $$$$ | $$$ |
-
-
-## 📚 Examples
-
-Check out the [examples/](examples/) directory for:
-- Building memory from Wikipedia dumps
-- Creating a personal knowledge base
-- Multi-language support
-- Real-time memory updates
-- Integration with popular LLMs
-
-## 🆘 Getting Help
-
-- 📖 [Documentation](https://github.com/olow304/memvid/wiki) - Comprehensive guides
-- 💬 [Discussions](https://github.com/olow304/memvid/discussions) - Ask questions
-- 🐛 [Issue Tracker](https://github.com/olow304/memvid/issues) - Report bugs
-- 🌟 [Show & Tell](https://github.com/olow304/memvid/discussions/categories/show-and-tell) - Share your projects
-
-## 🔗 Links
-
-- [GitHub Repository](https://github.com/olow304/memvid)
-- [PyPI Package](https://pypi.org/project/memvid)
-- [Changelog](https://github.com/olow304/memvid/releases)
-
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
 ## 🙏 Acknowledgments
 
-Created by [Olow304](https://github.com/olow304) and the Memvid community.
-
-Built with ❤️ using:
-- [sentence-transformers](https://www.sbert.net/) - State-of-the-art embeddings for semantic search
-- [OpenCV](https://opencv.org/) - Computer vision and video processing
-- [qrcode](https://github.com/lincolnloop/python-qrcode) - QR code generation
-- [FAISS](https://github.com/facebookresearch/faiss) - Efficient similarity search
-- [PyPDF2](https://github.com/py-pdf/pypdf) - PDF text extraction
-
-Special thanks to all contributors who help make Memvid better!
-
----
-
-**Ready to revolutionize your AI memory management? Install Memvid and start building!** 🚀
-
----
+Memdex is derived from [memvid](https://github.com/olow304/memvid) by Olow304 and contributors. Built with [sentence-transformers](https://www.sbert.net/) and [FAISS](https://github.com/facebookresearch/faiss).

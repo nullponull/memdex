@@ -4,59 +4,49 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Memvid is a Python library for QR code video-based AI memory that enables:
-- Chunking and encoding text data into QR code videos
-- Fast semantic search and retrieval from QR videos
-- Conversational AI interface with context-aware memory
+Memdex is a lightweight, serverless Python library for AI memory. It builds a
+portable semantic-search index from documents and answers natural-language
+queries locally — no vector database server and no cloud dependency.
+
+It is derived from the `memvid` project but removes the QR-code-in-video storage
+layer; see README "Why the video was removed".
 
 ## Key Architecture
 
 ### Core Components
-- **MemvidEncoder** (memvid/encoder.py): Handles text chunking and QR video creation
-- **MemvidRetriever** (memvid/retriever.py): Fast semantic search, QR frame extraction, context assembly
-- **MemvidChat** (memvid/chat.py): Manages conversations, context retrieval, and LLM interface
-- **IndexManager** (memvid/index.py): Embedding generation, storage, and vector search
+- **MemdexEncoder** (memdex/encoder.py): Text/PDF/EPUB chunking and index building via `build_index()`
+- **MemdexRetriever** (memdex/retriever.py): Semantic search returning chunk text from the index
+- **MemdexChat** (memdex/chat.py): Conversation management and LLM interface
+- **IndexManager** (memdex/index.py): Embedding generation, FAISS storage, and vector search
+- **utils.py**: `chunk_text` plus index file I/O
+- **llm_client.py**: Pluggable OpenAI / Google / Anthropic client
 
 ### Data Flow
-1. Text chunks → Embeddings → QR codes → Video frames
-2. Query → Semantic search → Frame extraction → QR decode → Context
-3. Context + History → LLM → Response
+1. Text/PDF/EPUB → chunks → embeddings → FAISS index (chunk text stored in metadata)
+2. Query → embedding → FAISS search → chunk text returned directly from the index
+3. Context + history → LLM → response
+
+The index is two files: `<name>_index.json` (metadata + chunk text) and
+`<name>_index.faiss` (vectors). No video, image, or QR artifacts are produced.
 
 ## Development Commands
 
 ```bash
-# Create and activate virtual environment
-python -m venv .memvid
-source .memvid/bin/activate  # On macOS/Linux
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run tests
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,pdf,llm]"
 pytest tests/
-
-# Run specific test
-pytest tests/test_encoder.py::TestSpecificFunction
-
-# Install package in development mode
-pip install -e .
+pytest tests/test_encoder.py::test_build_index
+black memdex/
 ```
 
 ## Key Dependencies
-- qrcode, Pillow: QR generation
-- opencv-python: Video processing
-- pyzbar: QR decoding
-- sentence-transformers: Semantic embeddings
-- numpy: Vector operations
-- openai: LLM integration (pluggable)
-
-## Performance Requirements
-- Retrieval (search + QR decode) must be < 2 seconds for 1M chunks
-- Use batching and parallel processing for frame extraction
-- Implement caching for hot frames and common queries
+- sentence-transformers: semantic embeddings
+- faiss-cpu: vector search
+- numpy, tqdm
+- Optional: PyPDF2 (pdf), ebooklib + beautifulsoup4 (epub), openai/google-generativeai/anthropic (llm)
 
 ## Implementation Notes
-- Vector DB options: FAISS, Annoy, or Chroma for scalability
-- LLM backend should be pluggable (OpenAI, Claude, Gemini, local)
-- Thread/process pools for parallel QR decoding
-- Disk-based index for large-scale deployments
+- Chunk text lives in the index metadata and is loaded in memory, so retrieval
+  needs no external services. This suits small-to-medium corpora; multi-GB text
+  should use a purpose-built store.
+- The LLM backend is pluggable (OpenAI, Anthropic, Google).

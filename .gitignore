@@ -1,27 +1,22 @@
 .env
 .DS_Store
-.memvid/
 output/
-prompt.memvid
 
-USAGE.md
-
-CLAUDE.md
-
-# Ignore built distributions and old package versions
+# Built distributions
 dist/
-memvid.egg-info/
+build/
 *.egg-info/
 *.whl
 *.tar.gz
 
-# Ignore Python cache files
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
 
-# Ignore build artifacts from previous versions
-memvid/__pycache__/
-memvid.egg-info/
-memvid.egg-info/*
-dist/memvid-*/
-
+# Test / tooling
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/

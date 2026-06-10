@@ -3,45 +3,14 @@ Tests for utility functions
 """
 
 import pytest
-import numpy as np
-from PIL import Image
 import tempfile
 import os
 
-from memvid.utils import (
-    encode_to_qr, decode_qr, chunk_text, qr_to_frame,
+from memdex.utils import (
+    chunk_text,
     save_index, load_index
 )
 
-
-def test_qr_encode_decode():
-    """Test QR code encoding and decoding"""
-    test_data = "Hello, Memvid!"
-    
-    # Encode to QR
-    qr_image = encode_to_qr(test_data)
-    assert isinstance(qr_image, Image.Image)
-    
-    # Convert to frame
-    frame = qr_to_frame(qr_image, (512, 512))
-    assert frame.shape == (512, 512, 3)
-    
-    # Decode
-    decoded = decode_qr(frame)
-    assert decoded == test_data
-
-
-def test_qr_encode_decode_large_data():
-    """Test QR with compression for large data"""
-    test_data = "x" * 1000  # Large data that will be compressed
-    
-    # Encode
-    qr_image = encode_to_qr(test_data)
-    frame = qr_to_frame(qr_image, (512, 512))
-    
-    # Decode
-    decoded = decode_qr(frame)
-    assert decoded == test_data
 
 
 def test_chunk_text():

@@ -1,1 +1,1 @@
-# Tests for memvid library
+# Tests for memdex library

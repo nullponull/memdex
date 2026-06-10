@@ -1,12 +1,12 @@
 
-# memvid/llm_client.py
+# memdex/llm_client.py
 
 import os
 import json
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Iterator
 
-from memvid.config import DEFAULT_LLM_MODELS
+from .config import DEFAULT_LLM_MODELS
 
 # Optional imports with availability checking
 try:

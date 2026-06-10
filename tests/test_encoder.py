@@ -1,77 +1,63 @@
 """
-Tests for MemvidEncoder
+Tests for MemdexEncoder
 """
 
-import pytest
-import tempfile
 import os
-from pathlib import Path
+import tempfile
 
-from memvid import MemvidEncoder
+from memdex import MemdexEncoder
 
 
 def test_encoder_initialization():
-    """Test encoder initialization"""
-    encoder = MemvidEncoder()
+    encoder = MemdexEncoder()
     assert encoder.chunks == []
     assert encoder.index_manager is not None
 
 
 def test_add_chunks():
-    """Test adding chunks"""
-    encoder = MemvidEncoder()
+    encoder = MemdexEncoder()
     chunks = ["chunk1", "chunk2", "chunk3"]
-    
     encoder.add_chunks(chunks)
     assert len(encoder.chunks) == 3
     assert encoder.chunks == chunks
 
 
 def test_add_text():
-    """Test adding text with auto-chunking"""
-    encoder = MemvidEncoder()
-    text = "This is a test. " * 50  # 800 characters
-    
+    encoder = MemdexEncoder()
+    text = "This is a test. " * 50
     encoder.add_text(text, chunk_size=100, overlap=20)
     assert len(encoder.chunks) > 1
-    assert all(chunk for chunk in encoder.chunks)  # No empty chunks
+    assert all(chunk for chunk in encoder.chunks)
 
 
-def test_build_video():
-    """Test video building (integration test)"""
-    encoder = MemvidEncoder()
+def test_build_index():
+    encoder = MemdexEncoder()
     chunks = [
         "Test chunk 1: Important information",
         "Test chunk 2: More data here",
-        "Test chunk 3: Final piece of info"
+        "Test chunk 3: Final piece of info",
     ]
     encoder.add_chunks(chunks)
-    
+
     with tempfile.TemporaryDirectory() as temp_dir:
-        video_file = os.path.join(temp_dir, "test.mp4")
         index_file = os.path.join(temp_dir, "test_index.json")
-        
-        # Build video
-        stats = encoder.build_video(video_file, index_file, show_progress=False)
-        
-        # Check files exist
-        assert os.path.exists(video_file)
+        stats = encoder.build_index(index_file, show_progress=False)
+
         assert os.path.exists(index_file)
-        assert os.path.exists(index_file.replace('.json', '.faiss'))
-        
-        # Check stats
+        assert os.path.exists(index_file.replace(".json", ".faiss"))
         assert stats["total_chunks"] == 3
-        assert stats["total_frames"] == 3
-        assert stats["video_size_mb"] > 0
-        assert stats["duration_seconds"] > 0
+
+        # No video or QR artifacts should be produced anywhere
+        leftovers = [f for f in os.listdir(temp_dir)
+                     if f.endswith((".mp4", ".mkv", ".png")) or f.startswith("frame_")]
+        assert leftovers == []
 
 
 def test_encoder_stats():
-    """Test encoder statistics"""
-    encoder = MemvidEncoder()
+    encoder = MemdexEncoder()
     chunks = ["short", "medium length chunk", "this is a longer chunk with more text"]
     encoder.add_chunks(chunks)
-    
+
     stats = encoder.get_stats()
     assert stats["total_chunks"] == 3
     assert stats["total_characters"] == sum(len(c) for c in chunks)
@@ -79,10 +65,8 @@ def test_encoder_stats():
 
 
 def test_clear():
-    """Test clearing encoder"""
-    encoder = MemvidEncoder()
+    encoder = MemdexEncoder()
     encoder.add_chunks(["test1", "test2"])
-    
     encoder.clear()
     assert encoder.chunks == []
     assert encoder.get_stats()["total_chunks"] == 0

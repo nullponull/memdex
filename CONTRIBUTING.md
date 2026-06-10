@@ -1,19 +1,19 @@
-# Contributing to Memvid
+# Contributing to Memdex
 
-Thank you for your interest in contributing to Memvid! We welcome contributions from everyone.
+Thank you for your interest in contributing to Memdex! We welcome contributions from everyone.
 
 ## 🚀 Getting Started
 
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/memvid.git
-   cd memvid
+   git clone https://github.com/YOUR_USERNAME/memdex.git
+   cd memdex
    ```
 3. **Create a virtual environment**:
    ```bash
-   python -m venv .memvid
-   source .memvid/bin/activate  # On Windows: .memvid\Scripts\activate
+   python -m venv .memdex
+   source .memdex/bin/activate  # On Windows: .memdex\Scripts\activate
    ```
 4. **Install development dependencies**:
    ```bash
@@ -37,7 +37,7 @@ Thank you for your interest in contributing to Memvid! We welcome contributions 
 3. **Run tests**:
    ```bash
    pytest tests/
-   pytest --cov=memvid tests/  # With coverage
+   pytest --cov=memdex tests/  # With coverage
    ```
 
 4. **Commit your changes**:
@@ -119,8 +119,8 @@ We love new ideas! When proposing features:
 Contributors will be:
 - Added to the project's contributor list
 - Mentioned in release notes
-- Part of the amazing Memvid community!
+- Part of the amazing Memdex community!
 
 ---
 
-**Thank you for making Memvid better!** 🙏
+**Thank you for making Memdex better!** 🙏
