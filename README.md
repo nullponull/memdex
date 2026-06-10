@@ -1,143 +1,141 @@
-# Memdex — Lightweight, Serverless AI Memory 🧠
+# Memdex — A document memory you can `git commit`, wired straight into Claude 🧠
 
-**A local semantic-search memory for AI. No vector database, no server, no cloud costs — just a portable index file.**
+**Lightweight, serverless semantic search for your documents. One portable index file, zero infrastructure, and a built-in [MCP](https://modelcontextprotocol.io) server so Claude Desktop / Claude Code can search your notes on demand.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
-Memdex turns a pile of documents into a single, portable semantic-search index. It embeds your text with `sentence-transformers`, stores the vectors in a FAISS index and the chunk text alongside them, and answers natural-language queries in milliseconds — entirely on your machine. Copy the index files anywhere and they just work, online or offline.
-
-> **History:** Memdex began as a fork of [memvid](https://github.com/olow304/memvid), which stored chunks as QR codes inside an MP4 video and decoded frames at query time. In practice the video layer added latency, fragility, and storage overhead without providing the speed or portability benefits — those came entirely from the search index. Memdex keeps the good part (a single portable index) and drops the video machinery. See [Why the video was removed](#why-the-video-was-removed).
-
-## ✨ Features
-
-- **Serverless** — no database to run, no Pinecone/Zilliz bill. Just `pip install` and go.
-- **Portable** — your knowledge base is two files (`*_index.json` + `*_index.faiss`) you can copy, version, or back up.
-- **Fast** — retrieval is the cost of the FAISS search alone; chunk text is read straight from memory.
-- **Offline-first** — once the embedding model is cached, everything runs locally.
-- **Simple API** — build an index and query it in a few lines.
-- **Pluggable LLMs** — optional chat layer works with OpenAI, Google, or Anthropic.
-- **Document support** — plain text, PDF, and EPUB ingestion.
-
-## 📦 Installation
-
-```bash
-pip install memdex                 # core
-pip install "memdex[pdf]"          # + PDF ingestion
-pip install "memdex[epub]"         # + EPUB ingestion
-pip install "memdex[llm]"          # + OpenAI / Google / Anthropic chat
-```
-
-## 🚀 Quick Start
+Memdex turns a pile of documents into a single, portable semantic-search index — two files you can copy, version-control, and carry offline. Then it hands that index to your AI assistant through MCP, so the assistant can pull the right passage out of *your* documents without a database, a server, or a cloud bill.
 
 ```python
 from memdex import MemdexEncoder, MemdexRetriever
 
-# 1. Build an index
-encoder = MemdexEncoder()
-encoder.add_chunks([
-    "The Eiffel Tower is located in Paris, France.",
-    "Python is a popular language for machine learning.",
-    "Sushi is a traditional Japanese dish made with vinegared rice.",
-])
-encoder.build_index("memory_index.json")   # writes memory_index.json + memory_index.faiss
+MemdexEncoder.from_documents(open("notes.md").read().split("\n\n")).build_index("notes_index.json")
 
-# 2. Search it
-retriever = MemdexRetriever("memory_index.json")
-for chunk in retriever.search("Japanese food", top_k=3):
-    print(chunk)
+for hit in MemdexRetriever("notes_index.json").search("what did I decide about the API redesign?"):
+    print(hit)
 ```
 
-### Build from documents
+> **Heads up — honest scope:** Memdex is a thin, friendly wrapper around `sentence-transformers` + FAISS. It is **not** faster or smarter than a mature vector store like Chroma or LanceDB, and it is **not** for million-chunk corpora. Its whole reason to exist is ergonomics: a single committable file, near-zero dependencies, full offline use, and first-class MCP. If that combination fits, it's lovely. If you need scale or rich filtering, use Chroma/LanceDB — see [the honest comparison](#-honest-comparison) below.
+
+## 🎯 Why you might want this
+
+- **Your memory is one file.** `notes_index.json` + `notes_index.faiss`. Commit it, diff it, drop it in a Gist, sync it in Dropbox. No server to run, nothing to "spin up."
+- **Claude can search it directly.** The bundled MCP server exposes a `search_memory` tool, so Claude Desktop / Claude Code can answer "what do my docs say about X?" against your private content.
+- **Truly offline.** After the embedding model is cached once, everything runs locally. Good for air-gapped, private, or just-on-a-plane work.
+- **Tiny.** Core install is `sentence-transformers` + `faiss-cpu`. No opencv, no ffmpeg, no Docker.
+
+## 📦 Install
+
+```bash
+pip install memdex                 # core: build + search
+pip install "memdex[mcp]"          # + MCP server for Claude
+pip install "memdex[pdf,epub]"     # + PDF / EPUB ingestion
+pip install "memdex[llm]"          # + optional chat layer (OpenAI/Google/Anthropic)
+```
+
+## 🚀 60-second quickstart
+
+**1. Build an index from your documents**
 
 ```python
 from memdex import MemdexEncoder
-import os
 
-encoder = MemdexEncoder()
-for name in os.listdir("documents"):
-    path = os.path.join("documents", name)
-    if name.endswith(".pdf"):
-        encoder.add_pdf(path)
-    elif name.endswith(".epub"):
-        encoder.add_epub(path)
-    else:
-        with open(path, encoding="utf-8") as f:
-            encoder.add_text(f.read())
-
-encoder.build_index("knowledge_index.json")
+enc = MemdexEncoder()
+enc.add_pdf("handbook.pdf")          # or add_text(...) / add_epub(...) / add_chunks([...])
+enc.build_index("memory_index.json") # writes memory_index.json + memory_index.faiss
 ```
 
-### Search with scores and metadata
+**2. Search it (no LLM needed)**
 
 ```python
-retriever = MemdexRetriever("knowledge_index.json")
-for hit in retriever.search_with_metadata("neural networks", top_k=5):
-    print(f"{hit['score']:.3f}  {hit['text'][:80]}")
+from memdex import MemdexRetriever
+
+r = MemdexRetriever("memory_index.json")
+for hit in r.search("vacation policy", top_k=3):
+    print(hit)
 ```
 
-### Chat with your memory (optional LLM layer)
+That's the whole library. Everything else is convenience on top.
 
-```python
-from memdex import MemdexChat
+## 🔌 Use it from Claude (MCP)
 
-chat = MemdexChat("knowledge_index.json", llm_provider="google")  # or "openai"/"anthropic"
-print(chat.chat("What does the knowledge base say about transformers?"))
+This is the part that makes Memdex feel different day-to-day: let Claude search your documents itself.
+
+**1. Build an index** (as above), then **2. register the MCP server** with your client.
+
+**Claude Desktop** — add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "memdex": {
+      "command": "memdex-mcp",
+      "args": ["/absolute/path/to/memory_index.json"]
+    }
+  }
+}
 ```
 
-Set the relevant API key first, e.g. `export GOOGLE_API_KEY=...`. Without a key, the chat layer returns the retrieved context only.
-
-### Chat with your own files from the CLI
+**Claude Code** — register it as a stdio server:
 
 ```bash
-python examples/file_chat.py --input-dir ./documents --provider google
-python examples/file_chat.py --files report.pdf notes.txt --chunk-size 2048
-python examples/file_chat.py --load-existing output/memory_20250101_index.json
+claude mcp add memdex -- memdex-mcp /absolute/path/to/memory_index.json
 ```
+
+Now ask Claude things like *"search my memory for what we decided about retries"* and it will call `search_memory` against your index. The server exposes two tools:
+
+| Tool | What it does |
+|------|--------------|
+| `search_memory(query, top_k=5)` | Returns the most relevant chunks with similarity scores |
+| `memory_stats()` | Reports the index path and chunk count |
+
+You can also point the server at an index with an environment variable instead of an argument: `MEMDEX_INDEX=/path/to/memory_index.json memdex-mcp`.
 
 ## 🧩 How it works
 
 ```
 Text / PDF / EPUB
-   → chunk_text()                      # overlapping chunks
-   → sentence-transformers embeddings  # vectors
+   → chunk_text()                          # overlapping chunks
+   → sentence-transformers embeddings
    → FAISS index (+ chunk text in metadata)
-   → *_index.json  +  *_index.faiss    # one portable index
+   → memory_index.json + memory_index.faiss   # one portable index
 
-Query → embed → FAISS search → return chunk text from the index
+Query → embed → FAISS search → return chunk text (already in memory)
 ```
 
-At query time there is no frame extraction, no image decoding, and no network call — the matching chunk text is already in the index metadata held in memory.
+There's no magic and no novel algorithm here — that's the point. The value is the packaging: a committable file and an MCP plug.
 
-## Why the video was removed
+## ⚖️ Honest comparison
 
-The original project's headline benefits (zero infrastructure, file-based portability, offline use, no monthly cost) all came from the search index. The full chunk text was already stored in the index metadata, so the QR-in-video layer was never actually on the critical path for retrieval. Removing it:
+| | **Memdex** | **Chroma / LanceDB** | **Hosted vector DB** (Pinecone, …) |
+|---|---|---|---|
+| Setup | `pip install`, one file | `pip install`, embedded DB | account + API keys + network |
+| Ops | none | none–light | managed service |
+| Portability | **single committable index file** | DB directory | remote only |
+| Offline | ✅ | ✅ | ❌ |
+| MCP server included | ✅ | ✖️ (DIY) | ✖️ (DIY) |
+| Metadata filtering | ✖️ (minimal) | ✅ | ✅ |
+| Incremental updates | rebuild | ✅ | ✅ |
+| Scale | thousands–~100k chunks | millions | billions |
+| Speed | FAISS-flat (fine at small scale) | optimized indexes | optimized + distributed |
 
-- **drops latency** — measured chunk retrieval went from ~840 ms (decode a video frame and read its QR) to well under 1 ms (read from the in-memory index);
-- **removes fragility** — no dependence on video codecs, frame resolution, or OpenCV's QR detector (which silently failed to decode high-version QR codes on recent OpenCV builds);
-- **shrinks dependencies** — no `opencv`, `qrcode`, `ffmpeg`, or Docker;
-- **shrinks storage** — encoding text → QR image → compressed video is far larger than the text itself.
+**Choose Memdex** for personal notes, docs, research libraries, or a private knowledge base you want to commit and hand to Claude with zero ops. **Choose Chroma/LanceDB** the moment you need filtering, incremental writes, or large scale. Memdex deliberately does less.
 
-## ⚖️ When to use Memdex (and when not to)
+> Note on coding agents: **Claude Code searches code with agentic grep, not embeddings**, and deliberately avoids pre-built indexes. Memdex is for searching *documents/prose*, not for indexing a codebase you're editing.
 
-**Good fit:** personal notes, research papers, documentation, and small-to-medium knowledge bases (thousands to low hundreds of thousands of chunks) where you want a zero-ops, copy-anywhere semantic search.
+## 📜 History
 
-**Not a good fit:** very large corpora (millions of chunks / multi-GB text). Memdex loads chunk text into memory, so at that scale a purpose-built store (LanceDB, SQLite + a vector extension, or a hosted vector DB) is the right tool.
-
-Conceptually Memdex is close to a minimal local vector store like Chroma; its distinguishing goal is to stay tiny, dependency-light, and contained in a single portable index.
+Memdex began as a fork of [memvid](https://github.com/olow304/memvid), which stored chunks as QR codes inside an MP4 and decoded video frames at query time. Measurement showed the video layer added latency and fragility while contributing nothing to retrieval — the chunk text was always in the search index. Memdex keeps the portable index, drops the video machinery, and adds the MCP server. (Retrieval went from ~840 ms decoding a video frame to <1 ms reading the index.)
 
 ## 🧪 Development
 
 ```bash
-pip install -e ".[dev,pdf,llm]"
+pip install -e ".[dev,pdf,mcp,llm]"
 pytest tests/
 black memdex/
 ```
 
 ## 📄 License
 
-MIT — see [LICENSE](LICENSE).
-
-## 🙏 Acknowledgments
-
-Memdex is derived from [memvid](https://github.com/olow304/memvid) by Olow304 and contributors. Built with [sentence-transformers](https://www.sbert.net/) and [FAISS](https://github.com/facebookresearch/faiss).
+MIT — see [LICENSE](LICENSE). Derived from [memvid](https://github.com/olow304/memvid) by Olow304 and contributors. Built with [sentence-transformers](https://www.sbert.net/) and [FAISS](https://github.com/facebookresearch/faiss).

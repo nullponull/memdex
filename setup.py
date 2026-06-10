@@ -41,10 +41,16 @@ setup(
         ],
         "pdf": ["PyPDF2>=3.0.0"],
         "epub": ["beautifulsoup4>=4.0.0", "ebooklib>=0.18"],
+        "mcp": ["mcp[cli]>=1.2.0"],
         "llm": [
             "openai>=1.0.0",
             "google-generativeai>=0.8.0",
             "anthropic>=0.52.0",
+        ],
+    },
+    entry_points={
+        "console_scripts": [
+            "memdex-mcp=memdex.mcp_server:main",
         ],
     },
 )
